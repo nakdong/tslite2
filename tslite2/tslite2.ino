@@ -21,7 +21,7 @@ const int motor2SpeedPin = 10;     // 모터 2 속도 제어 핀
 const int motor3DirectionPin = 12; // 모터 3 방향 핀
 const int motor3SpeedPin = 11;     // 모터 3 속도 제어 핀
 const int handlePin = A0;          // 가변저항 핀
-const int frontLedPin = 13;        // 전조등 핀
+const int frontLedPin = 13;        // 전조등 핀, 13번 핀이라 작동될 때 ㅁ
 const int backLedPin = 5;          // 후진등 핀
 const int handleRelay = 3;         // 헨들 전원 차단 핀
 const int batRelay = 2;            // 배터리 전원 차단 핀
@@ -93,9 +93,9 @@ void loop() {
     } else if (inputString == "$reset\n") {
       softwareReset();
     } else if (inputString == "$stop\n") {
-      // "start" 입력을 받을 때까지 대기합니다.
+      // "$start" 입력을 받을 때까지 대기합니다.
       while (true) {
-        Serial.println("아두이노를 시작하려면 '$start'를 입력하세요:");
+        Serial.println("아두이노를 시작하려면 '$start'혹은 '$reset'을 입력하세요:");
         while (Serial.available() == 0) {
           // 입력이 없으면 대기합니다.
         }
@@ -115,9 +115,6 @@ void loop() {
       // parseCommand 함수 호출
       parseCommand(inputString);
     }
-
-    
-
     // inputString 초기화
     inputString = "";
     stringComplete = false;
@@ -167,6 +164,7 @@ void parseCommand(String command) {
   char batrelay[10];
 
   // 시리얼로 받은 명령을 분석
+  // #(왼쪽 바퀴 속도,double) (오른쪽 바퀴 속도,double) (조향 각도,double) (앞쪽 전등,bool) (뒤쪽 전등,bool) (깜빡이,left|right|all|off) (핸들 릴레이,bool) (배터리 릴레이,bool)
   int parsed = sscanf(command.c_str(), "#%d %d %d %s %s %s %s %s %s", &leftWheelSpeed, &rightWheelSpeed, &setpoint, frontled, backled, neopixel, handlerelay, batrelay);
 
   if (parsed == 8) {
