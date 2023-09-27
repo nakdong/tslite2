@@ -1,5 +1,6 @@
-const char* VERSION = "1.0";   // 코드 버전
+const char* VERSION = "1.5";   // 코드 버전
 
+#include <avr/wdt.h>
 #include <Adafruit_NeoPixel.h>
 
 #define LED_PIN    4         // 네오픽셀 데이터 핀
@@ -25,7 +26,6 @@ const int backLedPin = 5;          // 후진등 핀
 const int handleRelay = 3;         // 헨들 전원 차단 핀
 const int batRelay = 2;            // 배터리 전원 차단 핀
 const int batVoltage = A1;         // 배터리 전압 측정 핀
-const int reset = 6;               // 아두이노 리셋 버튼
 
 // 변수 선언
 String inputString = "";
@@ -43,8 +43,17 @@ String Neopixel;
 bool Handlerelay;
 bool Batrelay;
 
+void softwareReset() {
+  wdt_enable(WDTO_15MS); // Enable the watchdog timer with a timeout of 15ms
+  while (1) {} // Wait for the watchdog timer to reset the microcontroller
+}
+
 void setup() {
   Serial.begin(9600);
+  while (!Serial) {
+    ; // 시리얼 포트가 준비될 때까지 대기합니다.
+  }
+  Serial.println("OK: booting");
   // 핀 모드 설정
   pinMode(motor1DirectionPin, OUTPUT);
   pinMode(motor1SpeedPin, OUTPUT);
@@ -59,9 +68,12 @@ void setup() {
   pinMode(handleRelay, OUTPUT);
   pinMode(batRelay, OUTPUT);
   pinMode(batVoltage, INPUT);
-  pinMode(reset, OUTPUT);
 
-  digitalWrite(reset, HIGH);
+  // 초기화
+  for (int i = 0; i < LED_COUNT; i++) {
+    strip.setPixelColor(i, 0); // 모든 픽셀 끄기
+  }
+  strip.show();
 }
 
 void loop() {
@@ -76,12 +88,35 @@ void loop() {
     }
   }
   if (stringComplete) {
-    if (inputString == "#info\n") {
+    if (inputString == "$info\n") {
       Serial.println("#tslite " + String(VERSION) + " " + String(potValue) + " " + String(batValue));
+    } else if (inputString == "$reset\n") {
+      softwareReset();
+    } else if (inputString == "$stop\n") {
+      // "start" 입력을 받을 때까지 대기합니다.
+      while (true) {
+        Serial.println("아두이노를 시작하려면 '$start'를 입력하세요:");
+        while (Serial.available() == 0) {
+          // 입력이 없으면 대기합니다.
+        }
+
+        // 입력을 읽고 비교합니다.
+        String input = Serial.readStringUntil('\n');
+        if (input == "$start") {
+          Serial.println("시작합니다.");
+          break; // "start"를 입력받으면 루프를 종료합니다.
+        } else if (input == "$reset") {
+          softwareReset();
+        } else {
+          Serial.println("올바른 명령이 아닙니다.");
+        }
+      }
+    } else {
+      // parseCommand 함수 호출
+      parseCommand(inputString);
     }
 
-    // parseCommand 함수 호출
-    parseCommand(inputString);
+    
 
     // inputString 초기화
     inputString = "";
@@ -132,7 +167,7 @@ void parseCommand(String command) {
   char batrelay[10];
 
   // 시리얼로 받은 명령을 분석
-  int parsed = sscanf(command.c_str(), "#%d %d %d %s %s %s %s %s", &leftWheelSpeed, &rightWheelSpeed, &setpoint, frontled, backled, neopixel, handlerelay, batrelay);
+  int parsed = sscanf(command.c_str(), "#%d %d %d %s %s %s %s %s %s", &leftWheelSpeed, &rightWheelSpeed, &setpoint, frontled, backled, neopixel, handlerelay, batrelay);
 
   if (parsed == 8) {
     Serial.print("Received Command: ");
