@@ -1,4 +1,4 @@
-const char* VERSION = "1.9";   // 코드 버전
+const char* VERSION = "1.11";   // 코드 버전
 
 #include <avr/wdt.h>
 #include <Adafruit_NeoPixel.h>
@@ -9,10 +9,11 @@ SoftwareSerial bluetoothSerial(A2, A3); // RX, TX pins
 #define LED_PIN    4         // 네오픽셀 데이터 핀
 #define LED_COUNT  34        // 네오픽셀의 개수
 #define YELLOW     0xFF5500  // 노란색 (RGB 값)
+#define LYELLOW    0xFF3300  // 밝은 노란색 (RGB 값)
 #define WHITE      0xFFBFAF  // 흰색 (RGB 값)
 
-#define MIN_HANDLE 315       // 조향 각도 최소 값
-#define MAX_HANDLE 95        // 조향 각도 최대 값
+#define MIN_HANDLE 132       // 조향 각도 최소 값
+#define MAX_HANDLE 585        // 조향 각도 최대 값
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -35,10 +36,10 @@ String inputString = "";
 boolean stringComplete = false;
 
 // 조향 관련 변수
-double Setpoint = 0; // 목표 핸들 값
-double Input = 0;    // 현재 핸들 값
-double Output = 0;   // 모터 3 출력
-double erobe = 0;
+int Setpoint = 0; // 목표 핸들 값
+int Input = 0;    // 현재 핸들 값
+int Output = 0;   // 모터 3 출력
+int erobe = 3;
 
 String Frontled;
 String Backled;
@@ -53,11 +54,7 @@ void softwareReset() {
 
 void setup() {
   Serial.begin(9600);
-  while (!Serial) {
-    ; // 시리얼 포트가 준비될 때까지 대기합니다.
-  }
-  Serial.println("OK: booting");
-  bluetoothSerial.begin(9600); // 아두이노와 블루투스 모듈 간의 시리얼 통신
+  bluetoothSerial.begin(9600);
   // 핀 모드 설정
   pinMode(motor1DirectionPin, OUTPUT);
   pinMode(motor1SpeedPin, OUTPUT);
@@ -73,10 +70,23 @@ void setup() {
   pinMode(batRelay, OUTPUT);
   pinMode(batVoltage, INPUT);
 
+  // // 웰컴 LED
+  // for (int i = 0; i < 3; i++) {
+  //   for (int i = 0; i < 17; i++) {
+  //     strip.setPixelColor(i, LYELLOW);
+  //     strip.setPixelColor(i + 17, LYELLOW);
+  //     strip.show();  // 변경된 색상 표시
+  //     delay(50);    // 0.5초 대기
+  //   }
+  //   for (int i = 0; i < 17; i++) {
+  //     strip.setPixelColor(i, YELLOW);
+  //     strip.setPixelColor(i + 17, YELLOW);
+  //     strip.show();  // 변경된 색상 표시
+  //     delay(50);    // 0.5초 대기
+  //   }
+  // }
   // 초기화
-  for (int i = 0; i < LED_COUNT; i++) {
-    strip.setPixelColor(i, 0); // 모든 픽셀 끄기
-  }
+  strip.clear();
   strip.show();
   controlMotor(motor1DirectionPin, motor1SpeedPin, 0);
   controlMotor(motor2DirectionPin, motor2SpeedPin, 0);
@@ -87,6 +97,13 @@ void loop() {
   int batValue = analogRead(batVoltage);
 
   while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    inputString += inChar;
+    if (inChar == '\n') {
+      stringComplete = true;
+    }
+  }
+  while (bluetoothSerial.available()) {
     char inChar = (char)Serial.read();
     inputString += inChar;
     if (inChar == '\n') {
@@ -130,22 +147,26 @@ void loop() {
   }
 
   // 핸들 값 매핑
-  Input = map(potValue, MIN_HANDLE, MAX_HANDLE, -45, 45);
+  Input = map(potValue, 120, 579, -45, 45);
+  Serial.print(potValue);
+  Serial.print(" ");
+  Serial.print(Input);
+  Serial.print(" ");
+  Serial.println(Setpoint);
 
-  // 핸들 제어 로직
-  if (Input < Setpoint - erobe) {
+  if (Input < Setpoint - 5) {
     controlMotor(motor3DirectionPin, motor3SpeedPin, -255);
-  } else if (Input > Setpoint + erobe) {
+  } else if (Input > Setpoint + 5) {
     controlMotor(motor3DirectionPin, motor3SpeedPin, 255);
   } else {
-    if (Input < Setpoint) {
-      int speed = Setpoint - Input;
+    if (Input < Setpoint - 3) {
+      int speed = Setpoint-Input;
       int realspeed = map(speed, -10, 0, 255, 0);
-      controlMotor(motor3DirectionPin, motor3SpeedPin, realspeed);
-    } else if (Input > Setpoint) {
-      int speed = Setpoint - Input;
+      controlMotor(motor3DirectionPin, motor3SpeedPin, -100);
+    } else if (Input > Setpoint + 3) {
+      int speed = Setpoint-Input;
       int realspeed = map(speed, 10, 0, 255, 0);
-      controlMotor(motor3DirectionPin, motor3SpeedPin, realspeed);
+      controlMotor(motor3DirectionPin, motor3SpeedPin, 100);
     } else {
       controlMotor(motor3DirectionPin, motor3SpeedPin, 0);
     }
@@ -173,7 +194,7 @@ void parseCommand(String command) {
   char batrelay[10];
 
   // 시리얼로 받은 명령을 분석
-  int parsed = sscanf(command.c_str(), "#%d %d %d %s %s %s %s %s %s", &leftWheelSpeed, &rightWheelSpeed, &setpoint, frontled, backled, neopixel, handlerelay, batrelay);
+  int parsed = sscanf(command.c_str(), "#%d %d %i %s %s %s %s %s %s", &leftWheelSpeed, &rightWheelSpeed, &setpoint, frontled, backled, neopixel, handlerelay, batrelay);
 
   if (parsed == 8) {
     Serial.print("Received Command: ");
@@ -243,33 +264,23 @@ void bledsignal(const char* direction) {
 // 네오픽셀 제어 함수
 void neoledsignal(const char* direction) {
   if (strcmp(direction, "left") == 0) {
-    // 왼쪽 15줄을 노란색으로 켜기
-    for (int i = 0; i < 17; i++) {
+    // 왼쪽
+    for (int i = 16; i > 0; i--) {
       strip.setPixelColor(i, YELLOW);
-      strip.show();  // 한 줄마다 변경된 색상 표시
-      delay(6);    // 대기
+      strip.show();
+      delay(6);
     }
-    delay(400);      // 왼쪽 15줄 모두 켜진 후 0.5초 대기
-    // 모든 네오픽셀 끄기
-    for (int i = 0; i < LED_COUNT; i++) {
-      strip.setPixelColor(i, 0); // 모든 픽셀 끄기
-    }
-    strip.show();
-    delay(100);      // 왼쪽 15줄 모두 켜진 후 0.5초 대기
+    delay(400);
+
   } else if (strcmp(direction, "right") == 0) {
-    // 오른쪽 15줄을 노란색으로 켜기
+    // 오른쪽
     for (int i = 16; i >= 0; i--) {
       strip.setPixelColor(i + 17, YELLOW);
-      strip.show();  // 한 줄마다 변경된 색상 표시
-      delay(6);    // 대기
+      strip.show();
+      delay(6);
     }
-    delay(540);      // 오른쪽 15줄 모두 켜진 후 0.5초 대기
-    // 모든 네오픽셀 끄기
-    for (int i = 0; i < LED_COUNT; i++) {
-      strip.setPixelColor(i, 0); // 모든 픽셀 끄기
-    }
-    strip.show();
-    delay(100);      // 모두 끈 후 대기
+    delay(540);
+
   } else if (strcmp(direction, "all") == 0) {
     // 왼쪽 15줄과 오른쪽 15줄을 동시에 노란색으로 켜기
     for (int i = 0; i < 17; i++) {
