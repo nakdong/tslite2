@@ -1,4 +1,4 @@
-const char* VERSION = "1.11";   // 코드 버전
+const char* VERSION = "1.13b";   // 코드 버전
 
 #include <avr/wdt.h>
 #include <Adafruit_NeoPixel.h>
@@ -13,7 +13,7 @@ SoftwareSerial bluetoothSerial(A2, A3); // RX, TX pins
 #define WHITE      0xFFBFAF  // 흰색 (RGB 값)
 
 #define MIN_HANDLE 132       // 조향 각도 최소 값
-#define MAX_HANDLE 585        // 조향 각도 최대 값
+#define MAX_HANDLE 585       // 조향 각도 최대 값
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -30,6 +30,7 @@ const int backLedPin = 5;          // 후진등 핀
 const int handleRelay = 3;         // 헨들 전원 차단 핀
 const int batRelay = 2;            // 배터리 전원 차단 핀
 const int batVoltage = A1;         // 배터리 전압 측정 핀
+const int batChange = A4;          // 배터리 전환 핀
 
 // 변수 선언
 String inputString = "";
@@ -46,6 +47,11 @@ String Backled;
 String Neopixel;
 bool Handlerelay;
 bool Batrelay;
+
+// 딜레이 관련 변수
+unsigned long previousMillis = 0;
+const long neopixelInterval = 500; // 네오픽셀 딜레이 시간 (500ms 예제)
+const long ledInterval = 1000;     // LED 딜레이 시간 (1000ms 예제)
 
 void softwareReset() {
   wdt_enable(WDTO_15MS); // Enable the watchdog timer with a timeout of 15ms
@@ -70,21 +76,6 @@ void setup() {
   pinMode(batRelay, OUTPUT);
   pinMode(batVoltage, INPUT);
 
-  // // 웰컴 LED
-  // for (int i = 0; i < 3; i++) {
-  //   for (int i = 0; i < 17; i++) {
-  //     strip.setPixelColor(i, LYELLOW);
-  //     strip.setPixelColor(i + 17, LYELLOW);
-  //     strip.show();  // 변경된 색상 표시
-  //     delay(50);    // 0.5초 대기
-  //   }
-  //   for (int i = 0; i < 17; i++) {
-  //     strip.setPixelColor(i, YELLOW);
-  //     strip.setPixelColor(i + 17, YELLOW);
-  //     strip.show();  // 변경된 색상 표시
-  //     delay(50);    // 0.5초 대기
-  //   }
-  // }
   // 초기화
   strip.clear();
   strip.show();
@@ -93,6 +84,26 @@ void setup() {
 }
 
 void loop() {
+  unsigned long currentMillis = millis();
+
+  // 네오픽셀 딜레이 처리
+  if (currentMillis - previousMillis >= neopixelInterval) {
+    previousMillis = currentMillis;
+
+    // 네오픽셀 딜레이 시간이 지났으므로 원하는 작업 실행
+    neoledsignal(Neopixel.c_str());
+  }
+
+  // LED 딜레이 처리
+  if (currentMillis - previousMillis >= ledInterval) {
+    previousMillis = currentMillis;
+
+    // LED 딜레이 시간이 지났으므로 원하는 작업 실행
+    fledsignal(Frontled.c_str());
+    bledsignal(Backled.c_str());
+  }
+
+  // 나머지 루프 코드를 계속 실행
   int potValue = analogRead(handlePin);
   int batValue = analogRead(batVoltage);
 
@@ -114,9 +125,12 @@ void loop() {
     if (inputString == "$info\n") {
       Serial.println("#tslite " + String(VERSION) + " " + String(potValue) + " " + String(batValue));
     } else if (inputString == "$reset\n") {
-      softwareReset();
+      // softwareReset();
     } else if (inputString == "$stop\n") {
       // "start" 입력을 받을 때까지 대기합니다.
+      controlMotor(motor1DirectionPin, motor1SpeedPin, 0);
+      controlMotor(motor2DirectionPin, motor2SpeedPin, 0);
+      controlMotor(motor3DirectionPin, motor3SpeedPin, 0);
       while (true) {
         Serial.println("아두이노를 시작하려면 '$start'를 입력하세요:");
         while (Serial.available() == 0) {
@@ -128,8 +142,6 @@ void loop() {
         if (input == "$start") {
           Serial.println("시작합니다.");
           break; // "start"를 입력받으면 루프를 종료합니다.
-        } else if (input == "$reset") {
-          softwareReset();
         } else {
           Serial.println("올바른 명령이 아닙니다.");
         }
@@ -138,8 +150,6 @@ void loop() {
       // parseCommand 함수 호출
       parseCommand(inputString);
     }
-
-    
 
     // inputString 초기화
     inputString = "";
@@ -160,11 +170,11 @@ void loop() {
     controlMotor(motor3DirectionPin, motor3SpeedPin, 255);
   } else {
     if (Input < Setpoint - 3) {
-      int speed = Setpoint-Input;
+      int speed = Setpoint - Input;
       int realspeed = map(speed, -10, 0, 255, 0);
       controlMotor(motor3DirectionPin, motor3SpeedPin, -100);
     } else if (Input > Setpoint + 3) {
-      int speed = Setpoint-Input;
+      int speed = Setpoint - Input;
       int realspeed = map(speed, 10, 0, 255, 0);
       controlMotor(motor3DirectionPin, motor3SpeedPin, 100);
     } else {
@@ -172,9 +182,6 @@ void loop() {
     }
   }
 
-  neoledsignal(Neopixel.c_str());
-  fledsignal(Frontled.c_str());
-  bledsignal(Backled.c_str());
   digitalWrite(handleRelay, Handlerelay);
   digitalWrite(batRelay, Batrelay);
 }
@@ -233,20 +240,9 @@ void controlMotor(int directionPin, int speedPin, int speed) {
 void fledsignal(const char* direction) {
   if (strcmp(direction, "true") == 0) {
     digitalWrite(frontLedPin, HIGH);
-    for (int i = 0; i < LED_COUNT; i++) {
-      strip.setPixelColor(i, WHITE);
-    }
-    strip.show();  // 변경된 색상 표시
-    delay(10);    // 대기
   } else if (strcmp(direction, "false") == 0) {
     // 전조등 끄기
     digitalWrite(frontLedPin, LOW);
-    // 모든 네오픽셀 끄기
-    for (int i = 0; i < LED_COUNT; i++) {
-      strip.setPixelColor(i, 0); // 모든 픽셀 끄기
-    }
-    strip.show();
-    delay(500);      // 모두 끈 후 대기
   }
 }
 
@@ -267,28 +263,21 @@ void neoledsignal(const char* direction) {
     // 왼쪽
     for (int i = 16; i > 0; i--) {
       strip.setPixelColor(i, YELLOW);
-      strip.show();
-      delay(6);
     }
-    delay(400);
-
+    strip.show();
   } else if (strcmp(direction, "right") == 0) {
     // 오른쪽
     for (int i = 16; i >= 0; i--) {
       strip.setPixelColor(i + 17, YELLOW);
-      strip.show();
-      delay(6);
     }
-    delay(540);
-
+    strip.show();
   } else if (strcmp(direction, "all") == 0) {
     // 왼쪽 15줄과 오른쪽 15줄을 동시에 노란색으로 켜기
     for (int i = 0; i < 17; i++) {
       strip.setPixelColor(i, YELLOW);
       strip.setPixelColor(i + 17, YELLOW);
     }
-    strip.show();  // 변경된 색상 표시
-    delay(500);    // 0.5초 대기
+    strip.show();
   } else if (strcmp(direction, "off") == 0) {
     // 모든 네오픽셀 끄기
     strip.clear();
