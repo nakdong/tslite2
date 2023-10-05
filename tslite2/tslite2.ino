@@ -1,5 +1,4 @@
-const char* VERSION = "1.11";   // 코드 버전
-
+const char* VERSION = "1.11.2b";   // 코드 버전
 
 #include <Adafruit_NeoPixel.h>
 #include <SoftwareSerial.h>
@@ -9,7 +8,7 @@ SoftwareSerial bluetoothSerial(A2, A3); // RX, TX pins
 #define LED_COUNT  34        // 네오픽셀의 개수
 #define YELLOW     0xFF5500  // 노란색 (RGB 값)
 #define LYELLOW    0xFF3300  // 밝은 노란색 (RGB 값)
-#define WHITE      0xFFBFAF  // 흰색 (RGB 값)
+#define WHITE      0xFFFFFF  // 흰색 (RGB 값)
 
 #define MIN_HANDLE 132       // 조향 각도 최소 값
 #define MAX_HANDLE 585        // 조향 각도 최대 값
@@ -17,10 +16,10 @@ SoftwareSerial bluetoothSerial(A2, A3); // RX, TX pins
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // 모터 및 핀 관련 상수 정의
-const int motor1DirectionPin = 7;  // 모터 1 방향 핀
-const int motor1SpeedPin = 9;      // 모터 1 속도 제어 핀
-const int motor2DirectionPin = 8;  // 모터 2 방향 핀
-const int motor2SpeedPin = 10;     // 모터 2 속도 제어 핀
+const int motor2DirectionPin = 7;  // 모터 1 방향 핀
+const int motor2SpeedPin = 9;      // 모터 1 속도 제어 핀
+const int motor1DirectionPin = 8;  // 모터 2 방향 핀
+const int motor1SpeedPin = 10;     // 모터 2 속도 제어 핀
 const int motor3DirectionPin = 12; // 모터 3 방향 핀
 const int motor3SpeedPin = 11;     // 모터 3 속도 제어 핀
 const int handlePin = A0;          // 가변저항 핀
@@ -47,10 +46,6 @@ String Neopixel;
 bool Handlerelay;
 bool Batrelay;
 
-const unsigned long PERIOD1 = 1000;
-
-Timer t;
-
 void setup() {
   Serial.begin(9600);
   bluetoothSerial.begin(9600);
@@ -70,13 +65,28 @@ void setup() {
   pinMode(batVoltage, INPUT);
   pinMode(batChange, OUTPUT);
 
+  // 웰컴 LED
+  for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 17; i++) {
+      strip.setPixelColor(i, LYELLOW);
+      strip.setPixelColor(i + 17, LYELLOW);
+      strip.show();  // 변경된 색상 표시
+      delay(50);    // 0.5초 대기
+    }
+    for (int i = 0; i < 17; i++) {
+      strip.setPixelColor(i, YELLOW);
+      strip.setPixelColor(i + 17, YELLOW);
+      strip.show();  // 변경된 색상 표시
+      delay(50);    // 0.5초 대기
+    }
+  }
+
   strip.clear();
   strip.show();
   controlMotor(motor1DirectionPin, motor1SpeedPin, 0);
   controlMotor(motor2DirectionPin, motor2SpeedPin, 0);
   digitalWrite(backLedPin, HIGH);
   digitalWrite(batChange, HIGH);
-  t.every(1,neoledsignal);
 }
 
 void loop() {
@@ -121,26 +131,26 @@ void loop() {
     stringComplete = false;
   }
   
-  Input = map(potValue, 120, 579, -45, 45);
-  Serial.print(potValue);
-  Serial.print(" ");
-  Serial.print(Input);
-  Serial.print(" ");
-  Serial.println(Setpoint);
+  Input = map(potValue, 120, 482, -45, 45);
+  // Serial.print(potValue);
+  // Serial.print(" ");
+  // Serial.print(Input);
+  // Serial.print(" ");
+  // Serial.println(Setpoint);
 
-  if (Input < Setpoint - 5) {
-    controlMotor(motor3DirectionPin, motor3SpeedPin, -255);
-  } else if (Input > Setpoint + 5) {
+  if (Input < Setpoint - 10) {
     controlMotor(motor3DirectionPin, motor3SpeedPin, 255);
+  } else if (Input > Setpoint + 10) {
+    controlMotor(motor3DirectionPin, motor3SpeedPin, -255);
   } else {
-    if (Input < Setpoint - 3) {
+    if (Input < Setpoint - 2) {
       int speed = Setpoint-Input;
       int realspeed = map(speed, -10, 0, 255, 0);
-      controlMotor(motor3DirectionPin, motor3SpeedPin, -100);
-    } else if (Input > Setpoint + 3) {
+      controlMotor(motor3DirectionPin, motor3SpeedPin, 70);
+    } else if (Input > Setpoint + 2) {
       int speed = Setpoint-Input;
       int realspeed = map(speed, 10, 0, 255, 0);
-      controlMotor(motor3DirectionPin, motor3SpeedPin, 100);
+      controlMotor(motor3DirectionPin, motor3SpeedPin, -70);
     } else {
       controlMotor(motor3DirectionPin, motor3SpeedPin, 0);
     }
@@ -188,10 +198,10 @@ void parseCommand(String command) {
 
 void controlMotor(int directionPin, int speedPin, int speed) {
   if (speed > 0) {
-    digitalWrite(directionPin, HIGH);
+    digitalWrite(directionPin, LOW);
     analogWrite(speedPin, speed);
   } else {
-    digitalWrite(directionPin, LOW);
+    digitalWrite(directionPin, HIGH);
     analogWrite(speedPin, abs(speed));
   }
 }
@@ -220,20 +230,26 @@ void bledsignal(const char* direction) {
 
 void neoledsignal(const char* direction) {
   if (strcmp(direction, "left") == 0) {
-    for (int i = 16; i > 0; i--) {
+    for (int i = 16; i >= 0; i--) {
       strip.setPixelColor(i, YELLOW);
       strip.show();
-      delay(6);
+      delay(20);
     }
-    delay(1000);
+    delay(200);
+    strip.clear();
+    strip.show();
+    delay(500);
 
   } else if (strcmp(direction, "right") == 0) {
     for (int i = 16; i >= 0; i--) {
       strip.setPixelColor(i + 17, YELLOW);
       strip.show();
-      delay(6);
+      delay(20);
     }
-    delay(1000);
+    delay(200);
+    strip.clear();
+    strip.show();
+    delay(500);
 
   } else if (strcmp(direction, "all") == 0) {
     for (int i = 0; i < 17; i++) {
